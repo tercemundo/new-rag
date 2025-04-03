@@ -274,7 +274,6 @@ if prompt := st.chat_input("Ask something..."):
             # STEP 1: Try to find answer in PDFs if documents are available
             pdf_answer = None
             pdf_sources = None
-            is_uncertain = True  # Default to uncertain so we try LLM if no PDFs
             has_pdf_content = False
             
             if st.session_state.vectorstore is not None:
@@ -327,12 +326,14 @@ if prompt := st.chat_input("Ask something..."):
                         "no information", "not mentioned", "not specified",
                         "not provided", "no context", "no data", "cannot answer",
                         "unable to provide", "don't have enough", "no specific",
-                        "no details", "not clear", "not available"
+                        "no details", "not clear", "not available", "lo siento"
                     ]
                     
-                    is_uncertain = any(phrase in pdf_answer.lower() for phrase in uncertain_phrases)
+                    # Check if the answer contains uncertainty phrases
+                    contains_uncertainty = any(phrase in pdf_answer.lower() for phrase in uncertain_phrases)
                     
-                    if not is_uncertain:
+                    # Only use PDF answer if it doesn't contain uncertainty phrases
+                    if not contains_uncertainty:
                         # Update chat history for RAG context
                         st.session_state.chat_history.append((prompt, pdf_answer))
                         
@@ -342,10 +343,10 @@ if prompt := st.chat_input("Ask something..."):
                         
                         full_response = pdf_answer
                         message_placeholder.markdown(full_response)
+                    # If uncertain, we'll fall through to the LLM step (don't set full_response)
             
             # STEP 2: If no good answer from PDFs or no PDFs at all, use the model directly
-            model_is_uncertain = False
-            if full_response == "" or (has_pdf_content and is_uncertain):  # Changed condition here
+            if full_response == "":  # This means either no PDFs or uncertain PDF answer
                 with st.spinner("Thinking with LLM..."):
                     client = Groq(api_key=api_key)
                     
@@ -366,6 +367,8 @@ if prompt := st.chat_input("Ask something..."):
                         if chunk.choices[0].delta.content:
                             model_response += chunk.choices[0].delta.content
                             message_placeholder.markdown(model_response + "▌")
+                    
+                    message_placeholder.markdown(model_response)
                     
                     # Check if model indicates it doesn't know
                     uncertain_phrases = [
