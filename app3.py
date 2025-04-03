@@ -347,14 +347,23 @@ if prompt := st.chat_input("Ask something..."):
                         "no information", "not mentioned", "not specified",
                         "not provided", "no context", "no data", "cannot answer",
                         "unable to provide", "don't have enough", "no specific",
-                        "no details", "not clear", "not available", "lo siento"
+                        "no details", "not clear", "not available", "lo siento",
+                        "no tengo información", "la información que tengo", "no incluye información"
                     ]
                     
                     # Check if the answer contains uncertainty phrases
                     contains_uncertainty = any(phrase in pdf_answer.lower() for phrase in uncertain_phrases)
                     
-                    # Only use PDF answer if it doesn't contain uncertainty phrases
-                    if not contains_uncertainty:
+                    # Also check if the answer is actually relevant to the question
+                    # This helps detect cases where the model found content but it's not relevant
+                    relevance_check = True
+                    
+                    # If the answer mentions that the information is about something else
+                    if "la información que tengo es sobre" in pdf_answer.lower() or "ya que la información" in pdf_answer.lower():
+                        relevance_check = False
+                    
+                    # Only use PDF answer if it doesn't contain uncertainty phrases and is relevant
+                    if not contains_uncertainty and relevance_check:
                         # Update chat history for RAG context
                         st.session_state.chat_history.append((prompt, pdf_answer))
                         
@@ -364,7 +373,7 @@ if prompt := st.chat_input("Ask something..."):
                         
                         full_response = pdf_answer
                         message_placeholder.markdown(full_response)
-                    # If uncertain, we'll fall through to the LLM step (don't set full_response)
+                    # If uncertain or not relevant, we'll fall through to the LLM step (don't set full_response)
                     else:
                         # Don't show the uncertain response to the user
                         # Just silently move to the LLM step
@@ -378,7 +387,7 @@ if prompt := st.chat_input("Ask something..."):
                     # Create chat completion with a system message to encourage answering
                     chat_completion = client.chat.completions.create(
                         messages=[
-                            {"role": "system", "content": "You are a helpful assistant. If you don't find information in the provided documents, use your general knowledge to provide a helpful response instead of saying you don't know."},
+                            {"role": "system", "content": "You are a helpful assistant. If the question cannot be answered using the provided documents, use your general knowledge to provide a helpful response. Never say you don't know or that you don't have information - if the documents don't have the answer, use your built-in knowledge to respond."},
                             # Include previous messages for context
                             *[{"role": m["role"], "content": m["content"]} 
                               for m in st.session_state.messages]
