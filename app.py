@@ -333,6 +333,7 @@ if prompt := st.chat_input("Ask something..."):
                         message_placeholder.markdown(full_response)
             
             # STEP 2: If no good answer from PDFs, use the model directly
+            model_is_uncertain = False  # Initialize the variable
             if full_response == "":
                 with st.spinner("Thinking..."):
                     client = Groq(api_key=api_key)
