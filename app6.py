@@ -548,3 +548,13 @@ Resultados de búsqueda web:
                         if respuesta_completa == "":
                             respuesta_completa = "Lo siento, ocurrió un error al buscar información en la web. Por favor, intenta nuevamente más tarde."
                             marcador_mensaje.markdown(respuesta_completa)
+        
+        # Añadir mensaje del asistente al historial de chat para la interfaz
+        except Exception as e:
+            error_message = f"Error: {str(e)}"
+            st.error(error_message)
+            respuesta_completa = f"Lo siento, ocurrió un error al procesar tu pregunta: {error_message}"
+            marcador_mensaje.markdown(respuesta_completa)
+        
+        # Guardar la respuesta en el historial de mensajes
+        st.session_state.messages.append({"role": "assistant", "content": respuesta_completa})
