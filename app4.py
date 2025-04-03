@@ -116,8 +116,12 @@ def process_pdf(uploaded_file):
         os.unlink(tmp_path)
 
 # Function to search the web
-def search_web(query, num_results=3):
+def search_web(query, num_results=5):  # Increased from 3 to 5 results
     try:
+        # Add "actual" or "current" to time-sensitive queries to get more recent results
+        if any(word in query.lower() for word in ["presidente", "actual", "ahora", "hoy", "quien es"]):
+            query = f"actual {query} 2024"
+        
         # Use DuckDuckGo search
         search_url = f"https://lite.duckduckgo.com/lite/?q={query}"
         headers = {
@@ -137,37 +141,35 @@ def search_web(query, num_results=3):
                 if len(results) >= num_results:
                     break
         
-        # Get content from top result
-        if results:
+        # Get content from multiple results instead of just the first one
+        content = ""
+        for result in results[:2]:  # Try to get content from the top 2 results
             try:
-                content_response = requests.get(results[0]["url"], headers=headers, timeout=5)
+                content_response = requests.get(result["url"], headers=headers, timeout=5)
                 content_soup = BeautifulSoup(content_response.text, 'html.parser')
                 
                 # Extract text from paragraphs
                 paragraphs = content_soup.find_all('p')
-                content = "\n".join([p.get_text().strip() for p in paragraphs[:5]])
+                result_content = "\n".join([p.get_text().strip() for p in paragraphs[:8]])  # Get more paragraphs
                 
-                return {
-                    "success": True,
-                    "results": results,
-                    "content": content
-                }
+                if result_content:
+                    content += f"\nFrom {result['url']}:\n{result_content}\n\n"
+                    
+                    # If we have enough content, stop
+                    if len(content) > 2000:
+                        break
             except:
-                return {
-                    "success": True,
-                    "results": results,
-                    "content": "Could not retrieve content from the webpage."
-                }
-        else:
-            return {
-                "success": False,
-                "message": "No search results found."
-            }
-    except Exception as e:
+                continue
+        
         return {
-            "success": False,
-            "message": f"Error searching the web: {str(e)}"
+            "success": True,
+            "results": results,
+            "content": content or "Could not retrieve content from the webpages."
         }
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+        full_response = f"Sorry, an error occurred: {str(e)}"
+        message_placeholder.markdown(full_response)
 
 # Sidebar for configuration
 with st.sidebar:
@@ -306,12 +308,7 @@ if prompt := st.chat_input("Ask something..."):
                         temperature=temperature
                     )
                     
-                    # Remove this problematic code block that's causing the error
-                    # llm.client.chat.completions.create = lambda **kwargs: client.chat.completions.create(
-                    #     **{**kwargs, "messages": [{"role": "system", "content": "Eres un asistente útil que responde en español. Utiliza la información proporcionada para responder a la pregunta. Siempre responde en español."}, *kwargs["messages"]]}
-                    # )
-                    
-                    # Create retrieval chain
+                    # Create retrieval chain with custom prompt
                     retriever = st.session_state.vectorstore.as_retriever(
                         search_type="similarity",
                         search_kwargs={"k": 5}
@@ -320,7 +317,8 @@ if prompt := st.chat_input("Ask something..."):
                     qa_chain = ConversationalRetrievalChain.from_llm(
                         llm=llm,
                         retriever=retriever,
-                        return_source_documents=True
+                        return_source_documents=True,
+                        verbose=True
                     )
                     
                     # Get response from RAG
@@ -353,7 +351,8 @@ if prompt := st.chat_input("Ask something..."):
                         "not provided", "no context", "no data", "cannot answer",
                         "unable to provide", "don't have enough", "no specific",
                         "no details", "not clear", "not available", "lo siento",
-                        "no tengo información", "la información que tengo", "no incluye información"
+                        "no tengo información", "la información que tengo", "no incluye información",
+                        "no tengo esa información", "no se encuentra", "no se menciona"
                     ]
                     
                     # Check if the answer contains uncertainty phrases
@@ -364,7 +363,12 @@ if prompt := st.chat_input("Ask something..."):
                     relevance_check = True
                     
                     # If the answer mentions that the information is about something else
-                    if "la información que tengo es sobre" in pdf_answer.lower() or "ya que la información" in pdf_answer.lower():
+                    if any(phrase in pdf_answer.lower() for phrase in [
+                        "la información que tengo es sobre", 
+                        "ya que la información", 
+                        "no tengo esa información en el contexto",
+                        "la información proporcionada no"
+                    ]):
                         relevance_check = False
                     
                     # Only use PDF answer if it doesn't contain uncertainty phrases and is relevant
@@ -440,6 +444,8 @@ if prompt := st.chat_input("Ask something..."):
                         client = Groq(api_key=api_key)
                         web_prompt = f"""Basado en la siguiente información de la web, por favor responde a la pregunta: "{prompt}"
                         
+IMPORTANTE: Si la pregunta es sobre información actual (como quién es el presidente actual, eventos recientes, etc.), asegúrate de proporcionar la información MÁS RECIENTE disponible en el contenido web. Prioriza la información de 2024 sobre información más antigua.
+
 Contenido web:
 {web_content}
 
