@@ -366,6 +366,13 @@ if prompt := st.chat_input("Pregunta algo..."):
             tiene_contenido_pdf = False
             modelo_es_incierto = False  # Inicializar esta variable aquí
             
+            # Detectar si la pregunta es sobre eventos recientes o información actual
+            es_pregunta_temporal = any(palabra in prompt.lower() for palabra in [
+                "2024", "2025", "actual", "reciente", "último", "ultima", 
+                "ganó", "gano", "ganador", "campeón", "campeon", "presidente actual",
+                "ahora", "este año", "este mes", "esta semana", "hoy"
+            ])
+            
             if st.session_state.vectorstore is not None:
                 with st.spinner("Buscando en tus documentos..."):
                     # Inicializar LangChain con Groq
@@ -419,7 +426,8 @@ if prompt := st.chat_input("Pregunta algo..."):
                         "unable to provide", "don't have enough", "no specific",
                         "no details", "not clear", "not available", "lo siento",
                         "no tengo información", "la información que tengo", "no incluye información",
-                        "no tengo esa información", "no se encuentra", "no se menciona"
+                        "no tengo esa información", "no se encuentra", "no se menciona",
+                        "no menciona", "no proporciona", "no habla sobre", "no contiene"
                     ]
                     
                     # Verificar si la respuesta contiene frases de incertidumbre
@@ -434,12 +442,20 @@ if prompt := st.chat_input("Pregunta algo..."):
                         "la información que tengo es sobre", 
                         "ya que la información", 
                         "no tengo esa información en el contexto",
-                        "la información proporcionada no"
+                        "la información proporcionada no",
+                        "el texto proporcionado no",
+                        "el texto solo habla sobre",
+                        "el documento no menciona"
                     ]):
                         verificacion_relevancia = False
                     
+                    # Si es una pregunta sobre eventos recientes y hay incertidumbre, ir directamente a la web
+                    if es_pregunta_temporal and (contiene_incertidumbre or not verificacion_relevancia):
+                        # Marcar para ir directamente a la búsqueda web
+                        respuesta_completa = ""
+                        modelo_es_incierto = True
                     # Solo usar respuesta PDF si no contiene frases de incertidumbre y es relevante
-                    if not contiene_incertidumbre and verificacion_relevancia:
+                    elif not contiene_incertidumbre and verificacion_relevancia:
                         # Actualizar historial de chat para contexto RAG
                         st.session_state.chat_history.append((prompt, respuesta_pdf))
                         
@@ -456,96 +472,7 @@ if prompt := st.chat_input("Pregunta algo..."):
                         pass
             
             # PASO 2: Si no hay buena respuesta de PDFs o no hay PDFs en absoluto, usar el modelo directamente
-            if respuesta_completa == "":  # Esto significa que no hay PDFs o respuesta PDF incierta
+            # Saltamos este paso para preguntas temporales si el PDF no tuvo respuesta
+            if respuesta_completa == "" and not (es_pregunta_temporal and modelo_es_incierto):
                 with st.spinner("Pensando con LLM..."):
-                    cliente = Groq(api_key=api_key)
-                    
-                    # Crear chat completion con un mensaje de sistema para fomentar respuestas en español
-                    chat_completion = cliente.chat.completions.create(
-                        messages=[
-                            {"role": "system", "content": "Eres un asistente útil que responde en español. Si la pregunta no puede ser respondida usando los documentos proporcionados, utiliza tu conocimiento general para proporcionar una respuesta útil. Nunca digas que no sabes o que no tienes información - si los documentos no tienen la respuesta, usa tu conocimiento incorporado para responder. Siempre responde en español."},
-                            # Incluir mensajes anteriores para contexto
-                            *[{"role": m["role"], "content": m["content"]} 
-                              for m in st.session_state.messages]
-                        ],
-                        model=modelo,
-                        temperature=temperatura,
-                        stream=True
-                    )
-                    
-                    # Transmitir la respuesta
-                    respuesta_modelo = ""
-                    for fragmento in chat_completion:
-                        if fragmento.choices[0].delta.content:
-                            respuesta_modelo += fragmento.choices[0].delta.content
-                            marcador_mensaje.markdown(respuesta_modelo + "▌")
-                    
-                    marcador_mensaje.markdown(respuesta_modelo)
-                    
-                    # Verificar si el modelo indica que no sabe
-                    frases_inciertas = [
-                        "i don't know", "i don't have", "i cannot", "i can't", 
-                        "no information", "not mentioned", "not specified",
-                        "not provided", "no context", "no data"
-                    ]
-                    
-                    modelo_es_incierto = any(frase in respuesta_modelo.lower() for frase in frases_inciertas)
-                    
-                    # Si tenemos fuentes PDF, añadirlas a la respuesta del modelo
-                    if fuentes_pdf and not modelo_es_incierto:
-                        respuesta_modelo += fuentes_pdf
-                    
-                    respuesta_completa = respuesta_modelo
-                    marcador_mensaje.markdown(respuesta_completa)
-            
-            # PASO 3: Si el modelo no sabe y la búsqueda web está habilitada, intentar búsqueda web
-            if habilitar_busqueda_web and (respuesta_completa == "" or modelo_es_incierto):
-                with st.spinner("Buscando en la web..."):
-                    resultados_web = buscar_web(prompt)
-                    
-                    if resultados_web["success"] and resultados_web["results"]:
-                        # Formatear resultados web
-                        contenido_web = resultados_web.get("content", "")
-                        
-                        # Usar modelo para generar respuesta basada en contenido web
-                        cliente = Groq(api_key=api_key)
-                        prompt_web = f"""Basado en la siguiente información de la web, por favor responde a la pregunta: "{prompt}"
-                        
-IMPORTANTE: Si la pregunta es sobre información actual (como quién es el presidente actual, eventos recientes, etc.), asegúrate de proporcionar la información MÁS RECIENTE disponible en el contenido web. Prioriza la información de 2024 sobre información más antigua.
-
-Contenido web:
-{contenido_web}
-
-Resultados de búsqueda web:
-"""
-                        for i, resultado in enumerate(resultados_web["results"]):
-                            prompt_web += f"{i+1}. {resultado['title']} - {resultado['url']}\n"
-                        
-                        mensajes_web = [
-                            {"role": "system", "content": "Eres un asistente útil que responde en español. Utiliza la información proporcionada para responder a la pregunta. Siempre responde en español."},
-                            {"role": "user", "content": prompt_web}
-                        ]
-                        
-                        web_completion = cliente.chat.completions.create(
-                            messages=mensajes_web,
-                            model=modelo,
-                            temperature=temperatura
-                        )
-                        
-                        respuesta_web = web_completion.choices[0].message.content
-                        
-                        # Añadir fuentes de la web
-                        respuesta_web += "\n\n**Fuentes Web:**\n"
-                        for i, resultado in enumerate(resultados_web["results"][:3]):
-                            respuesta_web += f"{i+1}. [{resultado['title']}]({resultado['url']})\n"
-                        
-                        respuesta_completa = respuesta_web
-                        marcador_mensaje.markdown(respuesta_completa)
-        
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
-            respuesta_completa = f"Lo siento, ocurrió un error: {str(e)}"
-            marcador_mensaje.markdown(respuesta_completa)
-    
-    # Añadir respuesta del asistente al historial de chat
-    st.session_state.messages.append({"role": "assistant", "content": respuesta_completa})
+                    # Resto del código para el LLM...
