@@ -306,10 +306,10 @@ if prompt := st.chat_input("Ask something..."):
                         temperature=temperature
                     )
                     
-                    # Add system message to respond in Spanish
-                    llm.client.chat.completions.create = lambda **kwargs: client.chat.completions.create(
-                        **{**kwargs, "messages": [{"role": "system", "content": "Eres un asistente útil que responde en español. Utiliza la información proporcionada para responder a la pregunta. Siempre responde en español."}, *kwargs["messages"]]}
-                    )
+                    # Remove this problematic code block that's causing the error
+                    # llm.client.chat.completions.create = lambda **kwargs: client.chat.completions.create(
+                    #     **{**kwargs, "messages": [{"role": "system", "content": "Eres un asistente útil que responde en español. Utiliza la información proporcionada para responder a la pregunta. Siempre responde en español."}, *kwargs["messages"]]}
+                    # )
                     
                     # Create retrieval chain
                     retriever = st.session_state.vectorstore.as_retriever(
