@@ -2,6 +2,7 @@ import streamlit as st
 from groq import Groq
 import os
 import tempfile
+import torch
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -88,11 +89,20 @@ def process_pdf(uploaded_file):
         
         st.session_state.document_chunks = all_chunks
         
+        # In the process_pdf function
         # Create embeddings and vectorstore
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'}
-        )
+        try:
+            embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+        except RuntimeError:
+            # Fallback to simpler configuration if error occurs
+            embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                cache_folder="./embeddings_cache"
+            )
         
         vectorstore = FAISS.from_documents(all_chunks, embeddings)
         st.session_state.vectorstore = vectorstore
@@ -216,12 +226,22 @@ with st.sidebar:
                     
                     st.session_state.document_chunks = all_chunks
                     
+                    # In the PDF removal section
                     # Recreate vectorstore if there are still documents
                     if all_chunks:
-                        embeddings = HuggingFaceEmbeddings(
-                            model_name="sentence-transformers/all-MiniLM-L6-v2",
-                            model_kwargs={'device': 'cpu'}
-                        )
+                        try:
+                            embeddings = HuggingFaceEmbeddings(
+                                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                                model_kwargs={'device': 'cpu'},
+                                encode_kwargs={'normalize_embeddings': True}
+                            )
+                        except RuntimeError:
+                            # Fallback to simpler configuration if error occurs
+                            embeddings = HuggingFaceEmbeddings(
+                                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                                cache_folder="./embeddings_cache"
+                            )
+                        
                         st.session_state.vectorstore = FAISS.from_documents(all_chunks, embeddings)
                     else:
                         st.session_state.vectorstore = None
