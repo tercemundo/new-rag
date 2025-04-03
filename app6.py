@@ -475,4 +475,29 @@ if prompt := st.chat_input("Pregunta algo..."):
             # Saltamos este paso para preguntas temporales si el PDF no tuvo respuesta
             if respuesta_completa == "" and not (es_pregunta_temporal and modelo_es_incierto):
                 with st.spinner("Pensando con LLM..."):
-                    # Resto del código para el LLM...
+                    # Usar el modelo directamente para responder
+                    cliente = Groq(api_key=api_key)
+                    respuesta_llm = cliente.chat.completions.create(
+                        model=modelo,
+                        messages=[
+                            {"role": "system", "content": "Eres un asistente útil y amigable. Responde de manera clara y concisa."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=temperatura
+                    )
+                    
+                    respuesta_completa = respuesta_llm.choices[0].message.content
+                    marcador_mensaje.markdown(respuesta_completa)
+                    
+                    # Actualizar historial de chat para contexto futuro
+                    st.session_state.chat_history.append((prompt, respuesta_completa))
+            
+            # PASO 3: Si el modelo no sabe y la búsqueda web está habilitada, intentar búsqueda web
+            if habilitar_busqueda_web and (respuesta_completa == "" or modelo_es_incierto):
+                with st.spinner("Buscando en la web..."):
+                    # Si es una pregunta temporal, añadir el año actual a la consulta
+                    consulta_web = prompt
+                    if es_pregunta_temporal and "2024" not in prompt.lower():
+                        from datetime import datetime
+                        año_actual = datetime.now().year
+                        consulta_web = f"{prompt} {año_actual}"
