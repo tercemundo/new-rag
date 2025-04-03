@@ -91,28 +91,52 @@ def procesar_pdf(archivo_subido):
         
         # Crear embeddings y vectorstore
         try:
-            embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
-            )
-        except RuntimeError:
-            # Configuración más simple si ocurre un error
-            embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                cache_folder="./embeddings_cache"
-            )
-        
-        vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
-        st.session_state.vectorstore = vectorstore
-        
-        return len(fragmentos_documento), archivo_subido.name
-    except Exception as e:
-        st.error(f"Error al procesar PDF: {str(e)}")
-        return 0, archivo_subido.name
-    finally:
-        # Limpiar el archivo temporal
-        os.unlink(ruta_tmp)
+            try:
+                embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2",
+                    model_kwargs={'device': 'cpu'},
+                    encode_kwargs={'normalize_embeddings': True}
+                )
+            except (RuntimeError, ConnectionError, requests.exceptions.ConnectionError):
+                # Primer fallback: configuración más simple
+                try:
+                    embeddings = HuggingFaceEmbeddings(
+                        model_name="sentence-transformers/all-MiniLM-L6-v2",
+                        cache_folder="./embeddings_cache"
+                    )
+                except (RuntimeError, ConnectionError, requests.exceptions.ConnectionError):
+                    # Segundo fallback: usar un modelo local si está disponible
+                    local_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "embeddings_cache")
+                    if os.path.exists(local_model_path):
+                        embeddings = HuggingFaceEmbeddings(
+                            model_name=local_model_path,
+                            model_kwargs={'device': 'cpu'}
+                        )
+                    else:
+                        st.warning("No se puede conectar a HuggingFace. Usando un método alternativo para procesar el texto.")
+                        # Implementar un método simple de embeddings como fallback
+                        from sklearn.feature_extraction.text import TfidfVectorizer
+                        
+                        class SimpleEmbeddings:
+                            def __init__(self):
+                                self.vectorizer = TfidfVectorizer()
+                                self.fitted = False
+                                
+                            def embed_documents(self, texts):
+                                if not self.fitted:
+                                    self.vectorizer.fit(texts)
+                                    self.fitted = True
+                                return self.vectorizer.transform(texts).toarray()
+                        
+                        embeddings = SimpleEmbeddings()
+                st.session_state.vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
+                st.session_state.vectorstore = vectorstore
+        except Exception as e:
+            st.error(f"Error al procesar PDF: {str(e)}")
+            return 0, archivo_subido.name
+        finally:
+            # Limpiar el archivo temporal
+            os.unlink(ruta_tmp)
 
 # Función para buscar en la web
 def buscar_web(consulta, num_resultados=5):
@@ -242,21 +266,50 @@ with st.sidebar:
                     # Recrear vectorstore si todavía hay documentos
                     if todos_fragmentos:
                         try:
-                            embeddings = HuggingFaceEmbeddings(
-                                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                                model_kwargs={'device': 'cpu'},
-                                encode_kwargs={'normalize_embeddings': True}
-                            )
-                        except RuntimeError:
-                            # Configuración más simple si ocurre un error
-                            embeddings = HuggingFaceEmbeddings(
-                                model_name="sentence-transformers/all-MiniLM-L6-v2",
-                                cache_folder="./embeddings_cache"
-                            )
-                        
-                        st.session_state.vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
-                    else:
-                        st.session_state.vectorstore = None
+                            try:
+                                embeddings = HuggingFaceEmbeddings(
+                                    model_name="sentence-transformers/all-MiniLM-L6-v2",
+                                    model_kwargs={'device': 'cpu'},
+                                    encode_kwargs={'normalize_embeddings': True}
+                                )
+                            except (RuntimeError, ConnectionError, requests.exceptions.ConnectionError):
+                                # Primer fallback: configuración más simple
+                                try:
+                                    embeddings = HuggingFaceEmbeddings(
+                                        model_name="sentence-transformers/all-MiniLM-L6-v2",
+                                        cache_folder="./embeddings_cache"
+                                    )
+                                except (RuntimeError, ConnectionError, requests.exceptions.ConnectionError):
+                                    # Segundo fallback: usar un modelo local si está disponible
+                                    local_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "embeddings_cache")
+                                    if os.path.exists(local_model_path):
+                                        embeddings = HuggingFaceEmbeddings(
+                                            model_name=local_model_path,
+                                            model_kwargs={'device': 'cpu'}
+                                        )
+                                    else:
+                                        st.warning("No se puede conectar a HuggingFace. Usando un método alternativo para procesar el texto.")
+                                        # Implementar un método simple de embeddings como fallback
+                                        from sklearn.feature_extraction.text import TfidfVectorizer
+                                        
+                                        class SimpleEmbeddings:
+                                            def __init__(self):
+                                                self.vectorizer = TfidfVectorizer()
+                                                self.fitted = False
+                                            
+                                            def embed_documents(self, texts):
+                                                if not self.fitted:
+                                                    self.vectorizer.fit(texts)
+                                                    self.fitted = True
+                                                return self.vectorizer.transform(texts).toarray()
+                                        
+                                        embeddings = SimpleEmbeddings()
+                                st.session_state.vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
+                            except Exception as e:
+                                st.error(f"Error al recrear vectorstore: {str(e)}")
+                                st.session_state.vectorstore = None
+                        else:
+                            st.session_state.vectorstore = None
                     
                     st.rerun()
     
