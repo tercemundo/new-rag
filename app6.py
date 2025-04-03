@@ -307,12 +307,13 @@ with st.sidebar:
                                                 return self.vectorizer.transform(texts).toarray()
                                         
                                         embeddings = SimpleEmbeddings()
-                                st.session_state.vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
-                            except Exception as e:
-                                st.error(f"Error al recrear vectorstore: {str(e)}")
-                                st.session_state.vectorstore = None
-                        else:
+                            
+                            st.session_state.vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
+                        except Exception as e:
+                            st.error(f"Error al recrear vectorstore: {str(e)}")
                             st.session_state.vectorstore = None
+                    else:
+                        st.session_state.vectorstore = None
                     
                     st.rerun()
     
