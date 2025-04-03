@@ -129,8 +129,11 @@ def procesar_pdf(archivo_subido):
                                 return self.vectorizer.transform(texts).toarray()
                         
                         embeddings = SimpleEmbeddings()
-                st.session_state.vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
-                st.session_state.vectorstore = vectorstore
+            
+            vectorstore = FAISS.from_documents(todos_fragmentos, embeddings)
+            st.session_state.vectorstore = vectorstore
+            
+            return len(fragmentos_documento), archivo_subido.name
         except Exception as e:
             st.error(f"Error al procesar PDF: {str(e)}")
             return 0, archivo_subido.name
