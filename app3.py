@@ -295,6 +295,7 @@ if prompt := st.chat_input("Ask something..."):
             pdf_answer = None
             pdf_sources = None
             has_pdf_content = False
+            model_is_uncertain = False  # Initialize this variable here
             
             if st.session_state.vectorstore is not None:
                 with st.spinner("Searching in your documents..."):
