@@ -365,17 +365,23 @@ if prompt := st.chat_input("Ask something..."):
                         full_response = pdf_answer
                         message_placeholder.markdown(full_response)
                     # If uncertain, we'll fall through to the LLM step (don't set full_response)
+                    else:
+                        # Don't show the uncertain response to the user
+                        # Just silently move to the LLM step
+                        pass
             
             # STEP 2: If no good answer from PDFs or no PDFs at all, use the model directly
             if full_response == "":  # This means either no PDFs or uncertain PDF answer
                 with st.spinner("Thinking with LLM..."):
                     client = Groq(api_key=api_key)
                     
-                    # Create chat completion
+                    # Create chat completion with a system message to encourage answering
                     chat_completion = client.chat.completions.create(
                         messages=[
-                            {"role": m["role"], "content": m["content"]} 
-                            for m in st.session_state.messages
+                            {"role": "system", "content": "You are a helpful assistant. If you don't find information in the provided documents, use your general knowledge to provide a helpful response instead of saying you don't know."},
+                            # Include previous messages for context
+                            *[{"role": m["role"], "content": m["content"]} 
+                              for m in st.session_state.messages]
                         ],
                         model=model,
                         temperature=temperature,
