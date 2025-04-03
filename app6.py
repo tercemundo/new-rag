@@ -495,9 +495,56 @@ if prompt := st.chat_input("Pregunta algo..."):
             # PASO 3: Si el modelo no sabe y la búsqueda web está habilitada, intentar búsqueda web
             if habilitar_busqueda_web and (respuesta_completa == "" or modelo_es_incierto):
                 with st.spinner("Buscando en la web..."):
-                    # Si es una pregunta temporal, añadir el año actual a la consulta
-                    consulta_web = prompt
-                    if es_pregunta_temporal and "2024" not in prompt.lower():
-                        from datetime import datetime
-                        año_actual = datetime.now().year
-                        consulta_web = f"{prompt} {año_actual}"
+                    try:
+                        # Si es una pregunta temporal, añadir el año actual a la consulta
+                        consulta_web = prompt
+                        if es_pregunta_temporal and "2024" not in prompt.lower():
+                            from datetime import datetime
+                            año_actual = datetime.now().year
+                            consulta_web = f"{prompt} {año_actual}"
+                        
+                        resultados_web = buscar_web(consulta_web)
+                        
+                        if resultados_web["success"] and resultados_web["results"]:
+                            # Formatear resultados web
+                            contenido_web = resultados_web.get("content", "")
+                            
+                            # Usar modelo para generar respuesta basada en contenido web
+                            cliente = Groq(api_key=api_key)
+                            prompt_web = f"""Basado en la siguiente información de la web, por favor responde a la pregunta: "{prompt}"
+                            
+IMPORTANTE: Si la pregunta es sobre información actual (como quién es el presidente actual, eventos recientes, etc.), asegúrate de proporcionar la información MÁS RECIENTE disponible en el contenido web. Prioriza la información de 2024 sobre información más antigua.
+
+Contenido web:
+{contenido_web}
+
+Resultados de búsqueda web:
+"""
+                            for i, resultado in enumerate(resultados_web["results"][:3], 1):
+                                prompt_web += f"{i}. {resultado['title']} - {resultado['url']}\n"
+                            
+                            respuesta_web = cliente.chat.completions.create(
+                                model=modelo,
+                                messages=[
+                                    {"role": "system", "content": "Eres un asistente útil que proporciona información precisa basada en los resultados de búsqueda web. Cita tus fuentes."},
+                                    {"role": "user", "content": prompt_web}
+                                ],
+                                temperature=0.3  # Temperatura más baja para respuestas más precisas
+                            )
+                            
+                            respuesta_completa = respuesta_web.choices[0].message.content
+                            respuesta_completa += "\n\n*Respuesta generada con información de la web.*"
+                            marcador_mensaje.markdown(respuesta_completa)
+                            
+                            # Actualizar historial de chat
+                            st.session_state.chat_history.append((prompt, respuesta_completa))
+                        else:
+                            # Si la búsqueda web falló y aún no tenemos respuesta, mostrar mensaje de error
+                            if respuesta_completa == "":
+                                respuesta_completa = "Lo siento, no pude encontrar información relevante para responder tu pregunta. Por favor, intenta reformularla o pregunta algo diferente."
+                                marcador_mensaje.markdown(respuesta_completa)
+                    except Exception as e:
+                        st.error(f"Error al buscar en la web: {str(e)}")
+                        if respuesta_completa == "":
+                            respuesta_completa = "Lo siento, ocurrió un error al buscar información en la web. Por favor, intenta nuevamente más tarde."
+                            marcador_mensaje.markdown(respuesta_completa)
