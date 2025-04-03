@@ -137,9 +137,9 @@ def procesar_pdf(archivo_subido):
         except Exception as e:
             st.error(f"Error al procesar PDF: {str(e)}")
             return 0, archivo_subido.name
-        finally:
-            # Limpiar el archivo temporal
-            os.unlink(ruta_tmp)
+    finally:
+        # Limpiar el archivo temporal
+        os.unlink(ruta_tmp)
 
 # Función para buscar en la web
 def buscar_web(consulta, num_resultados=5):
