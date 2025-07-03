@@ -185,7 +185,7 @@ with st.sidebar:
             "llama3-8b-8192",
             "llama3-70b-8192",
             "llama2-70b-4096",
-            "deepseek-coder-33b-instruct"
+            "deepseek-r1-distill-llama-70b"
         ]
     )
     
